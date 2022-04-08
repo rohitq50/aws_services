@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>File upload</title>
+		<script src="https://cdn.jsdelivr.net/npm/vue@2/dist/vue.js"></script>
+		<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+		<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM" crossorigin="anonymous"></script>
+	</head>
+	<body>
+		<div id="app">
+			<div class="m-5 mt-5">
+				<div v-if="showGreeting !== ''" class="alert alert-success text-wrap" role="alert"> <h5>{{showGreeting}}</h5></div>
+				<div v-if="showError !== ''" class="alert alert-danger text-wrap" role="alert"><h5>{{showError}}</h5></div>
+				<div class="row margin-center">
+					<div class="col border rounded m-3">
+						<h3 class="m-3 text-center">Upload file</h3>
+						<form class="m-4 needs-validation">
+							<div class="form-group mb-3">
+							  <label for="file-input">Select file</label>
+							  <input type="file" ref="file" class="form-control" id="file-input" placeholder="" required />
+							  <div class="invalid-feedback">Please select a file.</div>
+							</div>
+							<div class="mb-2">
+								<button type="submit" class="btn btn-primary me-1 w-100" @click.prevent="submit">Upload</button>
+							</div>
+						</form>
+					</div>
+					<div class="col my-auto m-3">
+						<h4>Your uploaded file are: </h4>
+						<table class="table">
+							<thead>
+								<tr>
+								  <th scope="col">#</th>
+								  <th scope="col">Name</th>
+								  <th scope="col">Size</th>
+								</tr>
+							  </thead>
+							  <tbody>
+								 	<tr class="pointer" v-for="(item, i) in uploadedFiles" @click="downloadFile(item.Key)">
+										<th scope="row">{{i + 1}}</th>
+										<td>{{item.Key}}</td>
+										<td>{{convertFileSizeInMB(item.Size)}}</td>
+									</tr>
+							  </tbody>
+						</table>
+					</div>
+				</div>
+			</div>
+		</div>
+		<script>
+			const endPoint = "http://localhost:3000/api/v1"
+			var app = new Vue({
+				el: '#app',
+				components: {
+				},
+				data: {
+					showGreeting: '',
+					fileObj: '',
+					showError: '',
+					uploadedFiles: []
+				},
+				created() {
+					this.getS3Files()
+				},
+				methods: {
+					submit(event) {
+						if( ! this.validateFormDate(event)) {
+							return
+						}
+						const file = this.$refs.file.files[0];
+						if(file) {
+							let formData = new FormData();
+							formData.append("fileupload", file);
+							this.uploadFile(formData)
+						}
+					},
+					async getBucketNames() {
+						let res = await this.apiCall(endPoint + "/getBuckets", "GET")
+						if(res) {
+							this.showGreeting = "success"
+						}
+					},
+					convertFileSizeInMB(size) {
+						if((size / 1024) < 1) {
+							return size.toFixed(1) + " bytes"
+						}
+						else if(((size / 1024) / 1024) < 1) {
+							size = (size / 1024)
+							return size.toFixed(1) + " kb"
+						}
+						size = (size / 1024) / 1024
+						return size.toFixed(1) + " mb"
+					},
+					async downloadFile(fileKey) {
+						let data = await this.apiCall(endPoint + "/getFile", "GET", {fileKey: fileKey}, null, true)
+						let url = window.URL.createObjectURL(data)
+						let a = document.createElement('a')
+						a.href = url
+						a.download = fileKey
+						document.body.appendChild(a) // we need to append the element to the dom -> otherwise it will not work in firefox
+						a.click()
+						a.remove()  //afterwards we remove the element again)
+					},
+					async getS3Files() {
+						let res = await this.apiCall(endPoint + "/getFiles", "GET")
+						if(res.code == 200) {
+							this.uploadedFiles = res.payload.Contents
+						}
+					},
+					async uploadFile(file) {
+						let res = await this.apiCall(endPoint + "/uploadFile", "POST", file, {})
+						if(res.code == 200) {
+							this.showGreeting = res.msg
+							this.getS3Files()
+						}
+					},
+					async apiCall(url = '', method = 'POST', data = {}, headers = null, isBlob = false) {
+						this.showError = "";
+						let res = null;
+						let httpOption = {method: method}
+						if(headers === null && method === "POST") {
+							httpOption.headers = {'Content-Type': 'application/json'}
+							httpOption.body = JSON.stringify(data)
+						}
+						else if(headers !== null && method === "POST") {
+							httpOption.headers = headers
+							httpOption.body = data
+						}
+						else if (method === "GET" && typeof data === "object" && Object.keys(data).length) {
+							url += "?" + this.encodeQueryData(data)
+						}
+
+						await fetch(url, httpOption)
+						.then(response => {
+							if(response.status == 200) {
+								return isBlob ? response.blob() : response.json()
+							}
+							this.showError = "Something went wrong"
+						})
+						.then(data => res = data)
+						.catch((error) => {
+							this.showError = "Something went wrong"
+						});
+						return res;
+					},
+					//TODO  Move it in common file
+					validateFormDate (event) {
+						let isSuccess = true;
+						'use strict'
+						var forms = document.querySelectorAll('.needs-validation')
+						Array.prototype.slice.call(forms)
+						.forEach(function (form) {
+							if (!form.checkValidity()) {
+								event.preventDefault()
+								event.stopPropagation()
+								isSuccess = false
+							}
+							form.classList.add('was-validated')
+						})
+						return isSuccess
+					},
+					encodeQueryData(data) {
+						const params = [];
+						for (let d in data) {
+							params.push(encodeURIComponent(d) + '=' + encodeURIComponent(data[d]));
+						}
+						return params.join('&');
+					}
+				}
+
+			})
+		</script>
+		<style>
+			.margin-center {
+				margin: 18% 0%;
+			}
+			.pointer {
+				cursor: pointer;
+			}
+		</style>
+	</body>
+</html>
