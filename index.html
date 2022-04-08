@@ -51,11 +51,8 @@
 			const endPoint = "http://localhost:3000/api/v1"
 			var app = new Vue({
 				el: '#app',
-				components: {
-				},
 				data: {
 					showGreeting: '',
-					fileObj: '',
 					showError: '',
 					uploadedFiles: []
 				},
@@ -116,6 +113,7 @@
 					},
 					async apiCall(url = '', method = 'POST', data = {}, headers = null, isBlob = false) {
 						this.showError = "";
+						this.showGreeting = "";
 						let res = null;
 						let httpOption = {method: method}
 						if(headers === null && method === "POST") {
